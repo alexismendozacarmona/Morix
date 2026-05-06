@@ -1,0 +1,174 @@
+Create a complete mobile app UI/UX design for a personal growth and wellness streaming platform called **Mentex**.
+
+The app is similar to Netflix but focused on mental development, meditation, knowledge, and inspirational content.
+
+The design must be modern, minimal, elegant, and slightly futuristic, with a calm and premium feeling. Use soft gradients, clean typography, and smooth spacing. The UI should feel immersive and focused on learning and inner growth.
+
+Primary audience: people interested in self-improvement, meditation, entrepreneurship, philosophy, and personal development.
+
+Primary colors:
+
+* Deep dark background
+* Soft glowing accents
+* Calm gradients (blue, purple, subtle gold)
+
+Design a full mobile application (Android first) including the following screens:
+
+1. ONBOARDING
+   A welcome screen introducing Mentex.
+   Headline: "Train your mind every day"
+   Short description explaining that users can access:
+   • Meditations
+   • Book learnings
+   • Inspirational biographies
+   • Stories of great companies
+   • Reflections and mental training
+
+Include buttons:
+
+* Get Started
+* Login
+
+Second onboarding screen: select interests
+Options:
+Meditation
+Personal growth
+Business
+Philosophy
+Productivity
+Inspirational stories
+
+2. HOME SCREEN
+   Navigation bar at the bottom with:
+   Home | Explore | Library | Progress | Profile
+
+Home layout structure:
+
+Top bar:
+Profile icon (left)
+Mentex logo (center)
+Search icon (right)
+
+Main sections:
+
+Featured Banner
+Large cinematic banner highlighting a series or content.
+
+Continue Watching
+Horizontal carousel of videos in progress.
+
+Recommended For You
+Personalized video suggestions.
+
+Meditations
+Horizontal video carousel.
+
+Book Learnings
+Horizontal carousel.
+
+Biographies
+Horizontal carousel.
+
+3. EXPLORE SCREEN
+   Search bar at the top.
+
+Content categories displayed as large cards:
+
+Meditations
+Book summaries
+Biographies
+Business stories
+Reflections
+Relaxing sounds
+
+Below include sections:
+Trending
+New on Mentex
+Most watched
+
+4. VIDEO PLAYER SCREEN
+   Large video player at the top.
+
+Below the player include:
+
+Video title
+Duration
+Category
+
+Description text
+
+Action buttons:
+Save
+Download (premium)
+Share
+
+Below that:
+Related videos carousel.
+
+5. LIBRARY SCREEN
+   User personal content.
+
+Sections:
+
+Favorites
+Started series
+Watch history
+
+6. PROGRESS SCREEN
+   Gamification dashboard.
+
+Include:
+
+Daily streak counter
+Level system
+XP progress bar
+
+Statistics:
+
+Videos watched
+Minutes learned
+Total learning days
+
+Achievement badges such as:
+First meditation
+5 videos completed
+1 hour of learning
+
+7. PROFILE SCREEN
+   User profile layout including:
+
+User avatar
+User name
+Current plan (Free or Premium)
+
+Menu options:
+
+My progress
+Favorites
+Subscription
+Notifications
+Settings
+Logout
+
+8. SUBSCRIPTION SCREEN
+
+Mentex Premium plan presentation.
+
+Benefits:
+
+Unlimited access to all content
+Exclusive series
+Offline downloads
+Long-form meditations
+
+Monthly plan option:
+$9.99 per month
+
+Buttons:
+
+Start Premium
+Continue with Free plan (2 videos per week)
+
+Design the UI as a modern streaming platform similar to Netflix but focused on knowledge, mindfulness, and personal evolution.
+
+Use smooth spacing, modern card-based layouts, horizontal carousels for videos, and immersive visual hierarchy optimized for mobile devices.

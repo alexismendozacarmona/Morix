@@ -1,0 +1,11 @@
+{
+  "appId": "com.morixoficial.app",
+  "appName": "Morix",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

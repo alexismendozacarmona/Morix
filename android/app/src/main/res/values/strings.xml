@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Morix</string>
+    <string name="title_activity_main">Morix</string>
+    <string name="package_name">com.morix.app</string>
+    <string name="custom_url_scheme">com.morix.app</string>
+</resources>

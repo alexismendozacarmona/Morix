@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- ══ PERMISOS DE RED ══════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ══ PERMISOS DE NOTIFICACIONES ══════════════════════════════════════ -->
+    <!-- Android 13+ (API 33): obligatorio para mostrar cualquier notificación -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Vibración en notificaciones -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Para que @capacitor/local-notifications reagende notifs tras reinicio -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ══ PERMISOS DE SEGUNDO PLANO / AUDIO ════════════════════════════════ -->
+    <!-- Necesario para correr MediaSessionService como foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ (API 34): tipo específico para audio/video en background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Evita que Android corte el audio al apagar la pantalla -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true">
+        <!-- ══ ACTIVIDAD PRINCIPAL ══════════════════════════════════════════ -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ══ SERVICIO DE AUDIO EN SEGUNDO PLANO (Media Session) ══════════ -->
+        <service
+            android:name="androidx.media3.session.MediaSessionService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <!-- ══ FOREGROUND SERVICE PROPIO — mantiene audio vivo en Android 8-15 ══ -->
+        <service
+            android:name=".BackgroundAudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false"
+        />
+
+        <!-- ══ FILE PROVIDER (para compartir archivos) ═══════════════════════ -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

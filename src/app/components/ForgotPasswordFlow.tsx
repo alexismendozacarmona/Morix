@@ -1,0 +1,668 @@
+/**
+ * ForgotPasswordFlow — Recuperación de contraseña en 3 pasos
+ *
+ * ─── CONFIGURACIÓN EMAILJS ────────────────────────────────────────────────────
+ *  1. Crea una cuenta gratis en https://www.emailjs.com
+ *  2. Crea un "Email Service" (Gmail, Outlook, etc.)
+ *  3. Crea un "Email Template" con estas variables:
+ *       {{to_email}}   → email del destinatario
+ *       {{otp_code}}   → el código de 6 dígitos
+ *       {{app_name}}   → nombre de la app (Morix)
+ *     Ejemplo de cuerpo del template:
+ *       "Tu código de verificación para {{app_name}} es: {{otp_code}}
+ *        Expira en 10 minutos."
+ *  4. Reemplaza las 3 constantes de abajo con tus credenciales reales.
+ *
+ *  Mientras no estén configuradas, el código se mostrará en pantalla
+ *  para que puedas probar el flujo sin email real (modo demo).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+import { useState, useRef, useEffect, useCallback } from 'react';
+import emailjs from '@emailjs/browser';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Mail, Lock, ArrowLeft, Eye, EyeOff,
+  CheckCircle2, AlertCircle, RefreshCw, X,
+} from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+
+// ─── ⚙️ Configura aquí tus credenciales de EmailJS ──────────────────────────
+const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';   // ej: 'service_abc123'
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';  // ej: 'template_xyz456'
+const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';   // ej: 'abcDEFghiJKL...'
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IS_EMAILJS_CONFIGURED =
+  EMAILJS_SERVICE_ID  !== 'YOUR_SERVICE_ID' &&
+  EMAILJS_TEMPLATE_ID !== 'YOUR_TEMPLATE_ID' &&
+  EMAILJS_PUBLIC_KEY  !== 'YOUR_PUBLIC_KEY';
+
+const OTP_EXPIRY_MS   = 10 * 60 * 1000; // 10 minutos
+const LS_OTP_KEY      = (email: string) => `morix_otp_${email.toLowerCase().trim()}`;
+
+interface OtpPayload { code: string; expires: number; email: string; }
+
+function saveOtp(email: string, code: string) {
+  const payload: OtpPayload = { code, expires: Date.now() + OTP_EXPIRY_MS, email };
+  try { localStorage.setItem(LS_OTP_KEY(email), JSON.stringify(payload)); } catch { /* ignore */ }
+}
+
+function verifyOtp(email: string, code: string): boolean {
+  try {
+    const raw = localStorage.getItem(LS_OTP_KEY(email));
+    if (!raw) return false;
+    const p: OtpPayload = JSON.parse(raw);
+    if (p.email !== email.toLowerCase().trim()) return false;
+    if (Date.now() > p.expires) { localStorage.removeItem(LS_OTP_KEY(email)); return false; }
+    return p.code === code;
+  } catch { return false; }
+}
+
+function clearOtp(email: string) {
+  try { localStorage.removeItem(LS_OTP_KEY(email)); } catch { /* ignore */ }
+}
+
+function generateOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function getPasswordStrength(pw: string): { level: 0|1|2|3; label: string; color: string } {
+  if (!pw) return { level: 0, label: '', color: '' };
+  if (pw.length < 6) return { level: 1, label: 'Muy corta', color: '#ef4444' };
+  const has = (r: RegExp) => r.test(pw);
+  const score =
+    (pw.length >= 8 ? 1 : 0) +
+    (has(/[A-Z]/) ? 1 : 0) +
+    (has(/[0-9]/) ? 1 : 0) +
+    (has(/[^A-Za-z0-9]/) ? 1 : 0);
+  if (score <= 1) return { level: 1, label: 'Débil', color: '#ef4444' };
+  if (score <= 2) return { level: 2, label: 'Regular', color: '#f59e0b' };
+  return { level: 3, label: 'Fuerte', color: '#22c55e' };
+}
+
+// ─── Estilos compartidos ─────────────────────────────────────────────────────
+const inputStyle = {
+  background: 'rgba(255,255,255,0.05)',
+  border: '1.5px solid rgba(255,255,255,0.08)',
+};
+const inputFocusStyle = {
+  background: 'rgba(255,255,255,0.07)',
+  border: '1.5px solid rgba(139,92,246,0.5)',
+};
+
+type Step = 'email' | 'otp' | 'password' | 'success';
+
+interface Props {
+  onClose: () => void;
+}
+
+export function ForgotPasswordFlow({ onClose }: Props) {
+  const [step, setStep]         = useState<Step>('email');
+  const [email, setEmail]       = useState('');
+  const [otp, setOtp]           = useState(['', '', '', '', '', '', '', '']);
+  const [newPw, setNewPw]       = useState('');
+  const [confirmPw, setConfirm] = useState('');
+  const [showPw, setShowPw]     = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [demoCode, setDemoCode] = useState('');   // muestra código en demo mode
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const strength = getPasswordStrength(newPw);
+
+  // ── Cooldown para reenvío ────────────────────────────────────────────────
+  const startCooldown = useCallback(() => {
+    setResendCooldown(60);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  // ── PASO 1: Enviar código al email ────────────────────────────────────────
+  const handleSendCode = async () => {
+    setError('');
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError('Ingresa un correo válido.'); return;
+    }
+
+    setLoading(true);
+
+    // Native Supabase Auth reset
+    const { error: authErr } = await supabase.auth.resetPasswordForEmail(trimmed);
+
+    if (authErr) {
+      setLoading(false);
+      setError('Error al enviar el código. Revisa que el correo sea correcto.');
+      return;
+    }
+
+    setDemoCode(''); // Limpiar si había algo
+    setLoading(false);
+    startCooldown();
+    setStep('otp');
+  };
+
+  // ── PASO 2: Verificar OTP ────────────────────────────────────────────────
+  const handleOtpChange = (index: number, value: string) => {
+    const char = value.replace(/\D/g, '').slice(-1);
+    const next = [...otp];
+    next[index] = char;
+    setOtp(next);
+    setError('');
+    if (char && index < 7) otpRefs.current[index + 1]?.focus();
+    // Auto-submit si completo
+    if (char && index === 7) {
+      const full = [...next].join('');
+      if (full.length === 8) setTimeout(() => verifyCode(full), 80);
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const verifyCode = async (code = otp.join('')) => {
+    if (code.length < 8) { setError('Ingresa los 8 dígitos.'); return; }
+    const trimmed = email.trim().toLowerCase();
+    
+    setLoading(true);
+    const { error: authErr } = await supabase.auth.verifyOtp({
+      email: trimmed,
+      token: code,
+      type: 'recovery',
+    });
+
+    if (authErr) {
+      setLoading(false);
+      setError('Código incorrecto o expirado. Solicita uno nuevo.');
+      setOtp(['', '', '', '', '', '', '', '']);
+      otpRefs.current[0]?.focus();
+      return;
+    }
+
+    setLoading(false);
+    setError('');
+    setStep('password');
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setError('');
+    setOtp(['', '', '', '', '', '', '', '']);
+    const trimmed = email.trim().toLowerCase();
+
+    setLoading(true);
+    const { error: authErr } = await supabase.auth.resetPasswordForEmail(trimmed);
+    setLoading(false);
+
+    if (authErr) {
+      setError('Error al reenviar. Intenta de nuevo.');
+      return;
+    }
+
+    startCooldown();
+    otpRefs.current[0]?.focus();
+  };
+
+  // ── PASO 3: Actualizar contraseña ────────────────────────────────────────
+  const handleUpdatePassword = async () => {
+    setError('');
+    if (strength.level < 2) { setError('La contraseña es demasiado débil.'); return; }
+    if (newPw !== confirmPw) { setError('Las contraseñas no coinciden.'); return; }
+
+    setLoading(true);
+
+    // Actualizar en Supabase Native Auth
+    // Nota: verifyOtp(type: recovery) automáticamente inicia sesión, así que updateUser funcionará.
+    const { error: authErr } = await supabase.auth.updateUser({ password: newPw });
+
+    if (authErr) {
+      setLoading(false);
+      setError('Error al actualizar: ' + authErr.message);
+      return;
+    }
+
+    // Ya no actualizamos la pass en morix_users por seguridad (queda controlada por Supabase Auth)
+    setLoading(false);
+    setStep('success');
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex flex-col overflow-hidden"
+      style={{ background: '#030309' }}
+    >
+      {/* Aurora sutil */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full opacity-20"
+          style={{ background: 'radial-gradient(circle, #8b5cf6, transparent 70%)', filter: 'blur(40px)' }} />
+      </div>
+
+      <div className="relative z-10 flex flex-col h-full px-6 pt-14 pb-10 overflow-y-auto no-scrollbar">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={step === 'email' ? onClose : () => { setError(''); setStep(step === 'otp' ? 'email' : 'otp'); }}
+            className="flex items-center gap-2 active:opacity-60 transition-opacity"
+            style={{ color: 'rgba(255,255,255,0.5)' }}
+          >
+            <ArrowLeft size={18} />
+            <span className="text-sm">Volver</span>
+          </button>
+          <button onClick={onClose} className="active:opacity-60" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Indicador de pasos */}
+        {step !== 'success' && (
+          <div className="flex items-center gap-2 mb-8">
+            {(['email', 'otp', 'password'] as Step[]).map((s, i) => (
+              <div key={s} className="flex items-center gap-2">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300"
+                  style={{
+                    background: step === s
+                      ? 'linear-gradient(135deg, #8b5cf6, #6366f1)'
+                      : (['otp', 'password', 'success'].indexOf(step) > ['email', 'otp', 'password'].indexOf(s))
+                        ? 'rgba(139,92,246,0.3)'
+                        : 'rgba(255,255,255,0.06)',
+                    color: step === s ? 'white' : 'rgba(255,255,255,0.4)',
+                    boxShadow: step === s ? '0 0 12px rgba(139,92,246,0.5)' : 'none',
+                  }}
+                >
+                  {(['otp', 'password', 'success'].indexOf(step) > i) ? '✓' : i + 1}
+                </div>
+                {i < 2 && <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)', minWidth: 20 }} />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {/* ── PASO 1: Email ─────────────────────────────────────────────── */}
+          {step === 'email' && (
+            <motion.div key="email"
+              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+              className="flex flex-col flex-1"
+            >
+              <div className="mb-8">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)' }}>
+                  <Mail size={24} style={{ color: '#a78bfa' }} />
+                </div>
+                <h2 className="font-black mb-2" style={{ fontSize: '22px', color: 'white' }}>
+                  ¿Olvidaste tu contraseña?
+                </h2>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  Ingresa tu correo y te enviaremos un código de verificación de 8 dígitos.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs font-bold mb-2 block" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  CORREO ELECTRÓNICO
+                </label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'rgba(255,255,255,0.3)' }} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => { setEmail(e.target.value); setError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && handleSendCode()}
+                    placeholder="tucorreo@ejemplo.com"
+                    autoComplete="email"
+                    className="w-full py-3.5 pl-11 pr-4 rounded-[16px] text-sm text-white placeholder:text-[rgba(255,255,255,0.25)] outline-none transition-all"
+                    style={inputStyle}
+                    onFocus={e => Object.assign(e.target.style, inputFocusStyle)}
+                    onBlur={e => Object.assign(e.target.style, inputStyle)}
+                  />
+                </div>
+              </div>
+
+              {error && <ErrorBanner message={error} />}
+
+              <div className="mt-auto">
+                <motion.button
+                  onClick={handleSendCode}
+                  disabled={loading || !email.trim()}
+                  whileTap={{ scale: email.trim() ? 0.97 : 1 }}
+                  className="w-full py-4 rounded-[20px] font-black text-sm tracking-wide transition-all"
+                  style={{
+                    background: email.trim()
+                      ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%)'
+                      : 'rgba(255,255,255,0.07)',
+                    color: email.trim() ? 'white' : 'rgba(255,255,255,0.3)',
+                    boxShadow: email.trim() ? '0 0 28px rgba(139,92,246,0.45)' : 'none',
+                  }}
+                >
+                  {loading ? <Spinner /> : 'Enviar código'}
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── PASO 2: OTP ───────────────────────────────────────────────── */}
+          {step === 'otp' && (
+            <motion.div key="otp"
+              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+              className="flex flex-col flex-1"
+            >
+              <div className="mb-8">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
+                  <span style={{ fontSize: 24 }}>🔐</span>
+                </div>
+                <h2 className="font-black mb-2" style={{ fontSize: '22px', color: 'white' }}>
+                  Ingresa el código
+                </h2>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  Enviamos un código de 8 dígitos a{' '}
+                  <span style={{ color: '#a78bfa' }}>{email}</span>
+                </p>
+              </div>
+
+              {/* Banner modo demo */}
+              {!IS_EMAILJS_CONFIGURED && demoCode && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 px-4 py-3 rounded-[14px] flex flex-col gap-1"
+                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
+                >
+                  <p className="text-xs font-black" style={{ color: '#fbbf24' }}>
+                    🧪 MODO DEMO — EmailJS no configurado
+                  </p>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                    Tu código es:{' '}
+                    <span className="font-black tracking-widest" style={{ color: '#fbbf24', fontSize: '16px' }}>
+                      {demoCode}
+                    </span>
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Cajas OTP */}
+              <div className="flex gap-2 justify-center mb-6">
+                {otp.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={el => { otpRefs.current[i] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={e => handleOtpChange(i, e.target.value)}
+                    onKeyDown={e => handleOtpKeyDown(i, e)}
+                    onPaste={e => {
+                      const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8);
+                      if (text.length === 8) {
+                        e.preventDefault();
+                        const arr = text.split('');
+                        setOtp(arr);
+                        setTimeout(() => verifyCode(text), 80);
+                      }
+                    }}
+                    className="text-center font-black text-lg rounded-[14px] outline-none transition-all"
+                    style={{
+                      width: 36, height: 48,
+                      background: digit ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.05)',
+                      border: digit ? '1.5px solid rgba(139,92,246,0.6)' : '1.5px solid rgba(255,255,255,0.08)',
+                      color: 'white',
+                      boxShadow: digit ? '0 0 10px rgba(139,92,246,0.2)' : 'none',
+                    }}
+                  />
+                ))}
+              </div>
+
+              {error && <ErrorBanner message={error} />}
+
+              {/* Temporizador y reenvío */}
+              <div className="flex items-center justify-center gap-1 mb-6">
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                  ¿No recibiste el código?
+                </span>
+                <button
+                  onClick={handleResend}
+                  disabled={resendCooldown > 0 || loading}
+                  className="text-xs font-bold flex items-center gap-1 transition-opacity"
+                  style={{
+                    color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#a78bfa',
+                    cursor: resendCooldown > 0 ? 'default' : 'pointer',
+                  }}
+                >
+                  <RefreshCw size={11} />
+                  {resendCooldown > 0 ? `Reenviar en ${resendCooldown}s` : 'Reenviar'}
+                </button>
+              </div>
+
+              <div className="mt-auto">
+                <motion.button
+                  onClick={() => verifyCode()}
+                  disabled={loading || otp.join('').length < 8}
+                  whileTap={{ scale: otp.join('').length === 8 ? 0.97 : 1 }}
+                  className="w-full py-4 rounded-[20px] font-black text-sm tracking-wide transition-all"
+                  style={{
+                    background: otp.join('').length === 8
+                      ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%)'
+                      : 'rgba(255,255,255,0.07)',
+                    color: otp.join('').length === 8 ? 'white' : 'rgba(255,255,255,0.3)',
+                    boxShadow: otp.join('').length === 8 ? '0 0 28px rgba(139,92,246,0.45)' : 'none',
+                  }}
+                >
+                  {loading ? <Spinner /> : 'Verificar código'}
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── PASO 3: Nueva contraseña ──────────────────────────────────── */}
+          {step === 'password' && (
+            <motion.div key="password"
+              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+              className="flex flex-col flex-1"
+            >
+              <div className="mb-8">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)' }}>
+                  <Lock size={24} style={{ color: '#4ade80' }} />
+                </div>
+                <h2 className="font-black mb-2" style={{ fontSize: '22px', color: 'white' }}>
+                  Nueva contraseña
+                </h2>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  Crea una contraseña segura para tu cuenta.
+                </p>
+              </div>
+
+              {/* Nueva contraseña */}
+              <div className="mb-4">
+                <label className="text-xs font-bold mb-2 block" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  NUEVA CONTRASEÑA
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'rgba(255,255,255,0.3)' }} />
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={newPw}
+                    onChange={e => { setNewPw(e.target.value); setError(''); }}
+                    placeholder="Mínimo 8 caracteres"
+                    autoComplete="new-password"
+                    className="w-full py-3.5 pl-11 pr-12 rounded-[16px] text-sm text-white placeholder:text-[rgba(255,255,255,0.25)] outline-none transition-all"
+                    style={inputStyle}
+                  />
+                  <button type="button" onClick={() => setShowPw(!showPw)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 active:opacity-60">
+                    {showPw
+                      ? <EyeOff size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />
+                      : <Eye size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />}
+                  </button>
+                </div>
+                {/* Barra de fuerza */}
+                {newPw.length > 0 && (
+                  <div className="mt-2">
+                    <div className="flex gap-1 mb-1">
+                      {[1, 2, 3].map(l => (
+                        <div key={l} className="flex-1 h-1 rounded-full transition-all duration-300"
+                          style={{ background: strength.level >= l ? strength.color : 'rgba(255,255,255,0.08)' }} />
+                      ))}
+                    </div>
+                    {strength.label && (
+                      <p className="text-xs" style={{ color: strength.color }}>{strength.label}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Confirmar contraseña */}
+              <div className="mb-4">
+                <label className="text-xs font-bold mb-2 block" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  CONFIRMAR CONTRASEÑA
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'rgba(255,255,255,0.3)' }} />
+                  <input
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPw}
+                    onChange={e => { setConfirm(e.target.value); setError(''); }}
+                    placeholder="Repite tu contraseña"
+                    autoComplete="new-password"
+                    className="w-full py-3.5 pl-11 pr-12 rounded-[16px] text-sm text-white placeholder:text-[rgba(255,255,255,0.25)] outline-none transition-all"
+                    style={{
+                      ...inputStyle,
+                      border: confirmPw && confirmPw !== newPw
+                        ? '1.5px solid rgba(239,68,68,0.5)'
+                        : confirmPw && confirmPw === newPw
+                          ? '1.5px solid rgba(34,197,94,0.5)'
+                          : inputStyle.border,
+                    }}
+                  />
+                  <button type="button" onClick={() => setShowConfirm(!showConfirm)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 active:opacity-60">
+                    {showConfirm
+                      ? <EyeOff size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />
+                      : <Eye size={16} style={{ color: 'rgba(255,255,255,0.4)' }} />}
+                  </button>
+                </div>
+                {confirmPw && confirmPw === newPw && (
+                  <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#4ade80' }}>
+                    <CheckCircle2 size={11} /> Las contraseñas coinciden
+                  </p>
+                )}
+              </div>
+
+              {error && <ErrorBanner message={error} />}
+
+              <div className="mt-auto">
+                <motion.button
+                  onClick={handleUpdatePassword}
+                  disabled={loading || strength.level < 2 || newPw !== confirmPw}
+                  whileTap={{ scale: strength.level >= 2 && newPw === confirmPw ? 0.97 : 1 }}
+                  className="w-full py-4 rounded-[20px] font-black text-sm tracking-wide transition-all"
+                  style={{
+                    background: strength.level >= 2 && newPw === confirmPw
+                      ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%)'
+                      : 'rgba(255,255,255,0.07)',
+                    color: strength.level >= 2 && newPw === confirmPw ? 'white' : 'rgba(255,255,255,0.3)',
+                    boxShadow: strength.level >= 2 && newPw === confirmPw ? '0 0 28px rgba(139,92,246,0.45)' : 'none',
+                  }}
+                >
+                  {loading ? <Spinner /> : 'Actualizar contraseña'}
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── ÉXITO ─────────────────────────────────────────────────────── */}
+          {step === 'success' && (
+            <motion.div key="success"
+              initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col flex-1 items-center justify-center text-center gap-6"
+            >
+              <motion.div
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
+                transition={{ type: 'spring', damping: 12, delay: 0.1 }}
+                className="w-24 h-24 rounded-full flex items-center justify-center"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.1))',
+                  border: '2px solid rgba(34,197,94,0.4)',
+                  boxShadow: '0 0 40px rgba(34,197,94,0.3)',
+                }}
+              >
+                <CheckCircle2 size={44} style={{ color: '#4ade80' }} />
+              </motion.div>
+
+              <div>
+                <h2 className="font-black mb-2" style={{ fontSize: '24px', color: 'white' }}>
+                  ¡Contraseña actualizada!
+                </h2>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  Tu contraseña fue actualizada correctamente en Morix y en Supabase. Ya puedes iniciar sesión.
+                </p>
+              </div>
+
+              <motion.button
+                onClick={onClose}
+                whileTap={{ scale: 0.97 }}
+                className="w-full py-4 rounded-[20px] font-black text-sm tracking-wide"
+                style={{
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%)',
+                  color: 'white',
+                  boxShadow: '0 0 28px rgba(139,92,246,0.45)',
+                }}
+              >
+                Ir a iniciar sesión
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Subcomponentes ───────────────────────────────────────────────────────────
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-2.5 px-4 py-3 rounded-[14px] mb-4"
+      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}
+    >
+      <AlertCircle size={15} style={{ color: '#f87171', flexShrink: 0 }} />
+      <p className="text-xs" style={{ color: '#f87171' }}>{message}</p>
+    </motion.div>
+  );
+}
+
+function Spinner() {
+  return (
+    <span className="flex items-center justify-center gap-2">
+      <motion.span
+        animate={{ rotate: 360 }}
+        transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+        className="block w-4 h-4 rounded-full border-2 border-white/30 border-t-white"
+      />
+      Procesando...
+    </span>
+  );
+}
