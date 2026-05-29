@@ -127,7 +127,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) setLoading(false);
         return;
       }
-      
+
+      // Persistir el id de sesión real apenas sabemos que hay sesión activa.
+      // Varios contextos leen morix_session_v1 de forma síncrona (Notifications
+      // lo usa como fuente de verdad en cada mutación; UserProgress y Playlist
+      // para el primer paint). Sin esta línea, tras un login limpio las
+      // notificaciones no se guardaban/marcaban/descartaban (early-return if !uid).
+      saveSessionId(sessionUser.id);
+
       const { data, error } = await supabase
         .from('morix_users')
         .select('*')
