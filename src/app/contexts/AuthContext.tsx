@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode, useRef } from 'react';
 import { supabase, type DbUser } from '../../lib/supabase';
 import { BillingService } from '../services/billingService';
+import { registerPushForUser, unregisterPushForCurrentDevice } from '../services/pushService';
 
 /* ─── User model (app-level) ─────────────────────────────────────────────── */
 export interface MorixUser {
@@ -177,7 +178,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user?.id) {
       BillingService.init(user.id);
-      
+
+      // Registrar el dispositivo para push (FCM). No-op en web; idempotente.
+      registerPushForUser(user.id);
+
       // 1. Sincronización silenciosa con la tienda (iOS/Android)
       BillingService.getStatus().then(({ type }) => {
         // Sincronizamos SIEMPRE que el plan en la base de datos sea distinto al de la tienda
@@ -301,6 +305,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* ── logout ──────────────────────────────────────────────────────────── */
   const logout = useCallback(async () => {
+    // Borrar el token push de ESTE dispositivo antes de cerrar sesión.
+    await unregisterPushForCurrentDevice();
     await supabase.auth.signOut();
     saveSessionId(null);
     saveUserCache(null);

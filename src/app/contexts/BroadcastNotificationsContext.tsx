@@ -252,7 +252,17 @@ export function BroadcastNotificationsProvider({ children }: { children: ReactNo
           saveCache(next);
           return next;
         });
+        // Notificación local instantánea en el dispositivo del admin (emisor).
         fireNativePush(n.title, n.body);
+        // Push (FCM) a TODOS los usuarios excepto el emisor. La Edge Function
+        // respeta el toggle appSettings.notificaciones de cada usuario.
+        // Es best-effort: si la función no está desplegada o falla, el broadcast
+        // ya quedó guardado y visible en el panel in-app igualmente.
+        supabase.functions
+          .invoke('send-push', {
+            body: { title: n.title, body: n.body, excludeUserId: userIdRef.current },
+          })
+          .catch(() => { /* silencioso */ });
       }
     },
     [],
