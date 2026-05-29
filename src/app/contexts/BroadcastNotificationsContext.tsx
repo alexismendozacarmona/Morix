@@ -124,26 +124,56 @@ export function BroadcastNotificationsProvider({ children }: { children: ReactNo
   );
 
   // ── 1. Cargar broadcasts desde Supabase ──────────────────────────────────
+  // Refetch reutilizable: lo usan la carga inicial, el realtime y el regreso
+  // a primer plano. No toca el flag de loading para no parpadear el panel.
+  const refreshBroadcasts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('morix_broadcast_notifications')
+      .select('*')
+      .order('sent_at', { ascending: false });
+
+    if (!error && data) {
+      const list = data.map(rowToNotif);
+      setBroadcasts(list);
+      saveCache(list);
+    }
+  }, []);
+
+  // Carga inicial al montar (con flag de loading)
   useEffect(() => {
     let cancelled = false;
-    async function fetchBroadcasts() {
+    (async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('morix_broadcast_notifications')
-        .select('*')
-        .order('sent_at', { ascending: false });
-
-      if (cancelled) return;
-      if (!error && data) {
-        const list = data.map(rowToNotif);
-        setBroadcasts(list);
-        saveCache(list);
-      }
-      setLoading(false);
-    }
-    fetchBroadcasts();
+      await refreshBroadcasts();
+      if (!cancelled) setLoading(false);
+    })();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshBroadcasts]);
+
+  // Realtime: refleja broadcasts nuevos/eliminados en vivo mientras la app
+  // está abierta (mismo patrón que SocialContext). Requiere que la tabla
+  // morix_broadcast_notifications esté en la publicación de realtime de
+  // Supabase; si no lo está, el canal simplemente no recibe eventos y no
+  // rompe nada (la carga inicial y el refetch de foreground siguen vigentes).
+  useEffect(() => {
+    const channel = supabase
+      .channel('morix_broadcast_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'morix_broadcast_notifications' },
+        () => { refreshBroadcasts(); },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [refreshBroadcasts]);
+
+  // Foreground: al volver la app a primer plano (Android WebView y web),
+  // re-sincroniza por si llegaron broadcasts mientras estaba en background.
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) refreshBroadcasts(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refreshBroadcasts]);
 
   // ── 2. Cargar estado read/dismissed del usuario desde Supabase ───────────
   const prevUidRef = useRef<string | null | undefined>(undefined);
@@ -222,7 +252,20 @@ export function BroadcastNotificationsProvider({ children }: { children: ReactNo
           saveCache(next);
           return next;
         });
+        // Notificación local instantánea en el dispositivo del admin (emisor).
         fireNativePush(n.title, n.body);
+        // Push (FCM) a TODOS los usuarios excepto el emisor. La Edge Function
+        // respeta el toggle appSettings.notificaciones de cada usuario.
+        // Es best-effort: si la función no está desplegada o falla, el broadcast
+        // ya quedó guardado y visible en el panel in-app igualmente.
+        // NOTA: la función quedó desplegada en Supabase con el nombre
+        // 'dynamic-service' (nombre por defecto del editor del dashboard).
+        // El código fuente vive en supabase/functions/send-push/index.ts.
+        supabase.functions
+          .invoke('dynamic-service', {
+            body: { title: n.title, body: n.body, excludeUserId: userIdRef.current },
+          })
+          .catch(() => { /* silencioso */ });
       }
     },
     [],
