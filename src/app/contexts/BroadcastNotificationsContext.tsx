@@ -258,8 +258,11 @@ export function BroadcastNotificationsProvider({ children }: { children: ReactNo
         // respeta el toggle appSettings.notificaciones de cada usuario.
         // Es best-effort: si la función no está desplegada o falla, el broadcast
         // ya quedó guardado y visible en el panel in-app igualmente.
+        // NOTA: la función quedó desplegada en Supabase con el nombre
+        // 'dynamic-service' (nombre por defecto del editor del dashboard).
+        // El código fuente vive en supabase/functions/send-push/index.ts.
         supabase.functions
-          .invoke('send-push', {
+          .invoke('dynamic-service', {
             body: { title: n.title, body: n.body, excludeUserId: userIdRef.current },
           })
           .catch(() => { /* silencioso */ });

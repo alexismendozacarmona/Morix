@@ -1,4 +1,6 @@
 // Supabase Edge Function: send-push
+// (Desplegada en Supabase con el slug 'dynamic-service' — nombre por defecto
+//  que asignó el editor del dashboard. La app la invoca como 'dynamic-service'.)
 // ─────────────────────────────────────────────────────────────────────────────
 // Envía una notificación push (FCM HTTP v1) a TODOS los dispositivos
 // registrados en morix_device_tokens, respetando el toggle de notificaciones
