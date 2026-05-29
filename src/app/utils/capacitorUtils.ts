@@ -159,7 +159,7 @@ export async function fireSystemNotification(
           title,
           body,
           channelId:   morix_CHANNEL_ID, // ← canal creado en initNotificationChannel()
-          smallIcon:   'ic_stat_Morix',  // ← usamos el icono del sistema si existe
+          smallIcon:   options?.smallIcon ?? 'ic_stat_morix', // ← drawable monocromo en res/drawable/ic_stat_morix.xml
           schedule:    { at: new Date(Date.now() + 50) }, // casi inmediato
           sound:       undefined,
           actionTypeId: '',
