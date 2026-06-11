@@ -3,10 +3,15 @@ import { useNavigate } from 'react-router';
 import { motion, useScroll, useTransform, AnimatePresence } from 'motion/react';
 import { Zap, Crown, Users, Star, Shield, ChevronRight, Check, Menu, X } from 'lucide-react';
 import { MorixLogo } from '../components/MorixLogo';
+import { LegalModal } from '../components/LegalModal';
 
 /* ─── Badge SVGs oficiales ──────────────────────────────────────────── */
-const APPLE_BADGE = 'https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg';
+// App Store badge — se reactivará cuando se publique la versión de iOS:
+// const APPLE_BADGE = 'https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg';
 const GOOGLE_BADGE = 'https://play.google.com/intl/en_us/badges/static/images/badges/es_badge_web_generic.png';
+
+/* Link de descarga en Google Play (app ya publicada) */
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.morixoficial.app';
 
 /* ─── Datos ─────────────────────────────────────────────────────────────── */
 const CATEGORIAS = [
@@ -86,6 +91,7 @@ const PLANES = [
 export default function Landing() {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | null>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
   const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '30%']);
@@ -122,7 +128,7 @@ export default function Landing() {
       `}</style>
 
       {/* ── NAVBAR ───────────────────────────────────────────── */}
-      <div className="fixed top-6 left-0 right-0 z-50 flex justify-center px-6">
+      <div className="absolute top-6 left-0 right-0 z-50 flex justify-center px-6">
         <nav
           className="flex items-center gap-6 px-8 py-3 rounded-full"
           style={{
@@ -181,7 +187,7 @@ export default function Landing() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            style={{ position: 'fixed', top: 68, left: 16, right: 16, zIndex: 49, background: 'rgba(14,12,28,0.97)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)', padding: '20px', backdropFilter: 'blur(24px)' }}
+            style={{ position: 'absolute', top: 68, left: 16, right: 16, zIndex: 49, background: 'rgba(14,12,28,0.97)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.09)', padding: '20px', backdropFilter: 'blur(24px)' }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {['Categorías', 'Características', 'Precios'].map((item) => (
@@ -238,8 +244,9 @@ export default function Landing() {
           <div style={{ marginBottom: '40px' }} /> {/* Removed Hero auth buttons */}
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center', marginBottom: '48px' }}>
-            <img src={APPLE_BADGE} alt="App Store" style={{ height: '48px', cursor: 'default' }} />
-            <img src={GOOGLE_BADGE} alt="Google Play" style={{ height: '48px', cursor: 'default' }} />
+            <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Descargar Morix en Google Play">
+              <img src={GOOGLE_BADGE} alt="Disponible en Google Play" style={{ height: '48px', cursor: 'pointer' }} />
+            </a>
           </motion.div>
 
           {/* Social proof */}
@@ -405,9 +412,28 @@ export default function Landing() {
                   ))}
                 </div>
 
-                <div style={{ width: '100%', padding: '14px', borderRadius: '16px', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: '14px', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center' }}>
-                  Solo en la App
-                </div>
+                <a
+                  href={PLAY_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '16px',
+                    background: plan.highlight ? 'linear-gradient(135deg, #8b5cf6, #4f46e5)' : 'rgba(255,255,255,0.06)',
+                    color: plan.highlight ? 'white' : 'rgba(255,255,255,0.85)',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    border: plan.highlight ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                    textAlign: 'center',
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                    boxShadow: plan.highlight ? '0 0 24px rgba(139,92,246,0.4)' : 'none',
+                  }}
+                >
+                  Descargar en Google Play
+                </a>
               </motion.div>
             ))}
           </div>
@@ -428,8 +454,9 @@ export default function Landing() {
             Únete a miles de personas que ya están transformando su vida con Morix. Gratis, sin compromisos.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '40px' }}>
-            <img src={APPLE_BADGE} alt="App Store" style={{ height: '48px' }} />
-            <img src={GOOGLE_BADGE} alt="Google Play" style={{ height: '48px' }} />
+            <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Descargar Morix en Google Play">
+              <img src={GOOGLE_BADGE} alt="Disponible en Google Play" style={{ height: '48px', cursor: 'pointer' }} />
+            </a>
           </div>
         </motion.div>
       </section>
@@ -442,8 +469,8 @@ export default function Landing() {
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
               {[
-                { label: 'Términos de Servicio', action: () => navigate('/registro') },
-                { label: 'Política de Privacidad', action: () => navigate('/registro') },
+                { label: 'Términos de Servicio', action: () => setLegalModal('terms') },
+                { label: 'Política de Privacidad', action: () => setLegalModal('privacy') },
                 { label: 'contacto@morixoficial.com', action: () => window.open('mailto:contacto@morixoficial.com') },
               ].map(({ label, action }) => (
                 <button key={label} onClick={action} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: '13px', cursor: 'pointer', transition: 'color 0.2s' }}
@@ -465,6 +492,10 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      {legalModal && (
+        <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
+      )}
 
     </div>
   );
