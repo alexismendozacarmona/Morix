@@ -1,10 +1,9 @@
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Bookmark, Crown, Play, Lock } from 'lucide-react';
+import { Bookmark, Crown, Play } from 'lucide-react';
 import type { Contenido } from '../data/mockData';
 import { usePreview } from '../contexts/PreviewContext';
 import { useUserProgress } from '../contexts/UserProgressContext';
-import { usePlanAccess } from '../hooks/usePlanAccess';
 import { HScrollRow } from './HScrollRow';
 import { useT } from '../i18n/useT';
 import { toCanonicalCategory } from '../utils/categoryUtils';
@@ -54,14 +53,12 @@ function showAuthor(cat: string) {
 export function ContentCard({ contenido, delay = 0 }: { contenido: Contenido; delay?: number }) {
   const { setPreviewItem } = usePreview();
   const { isSaved, getVideoProgress } = useUserProgress();
-  const { canWatch } = usePlanAccess();
   const t = useT();
   const [pressed, setPressed] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const c = getCatColors(contenido.categoria);
   const saved = isSaved(contenido.id);
   const realProgress = getVideoProgress(contenido.id) || contenido.progreso;
-  const locked = !canWatch(contenido);
   const catDisplay = (t.categorias as Record<string, string>)[toCanonicalCategory(contenido.categoria)] ?? contenido.categoria;
 
   return (
@@ -137,11 +134,15 @@ export function ContentCard({ contenido, delay = 0 }: { contenido: Contenido; de
           )}
         </div>
 
-        {/* Premium + Saved badges top-right */}
+        {/* Premium / Free + Saved badges top-right */}
         <div className="absolute top-2.5 right-2.5 flex flex-col gap-1.5 items-end pointer-events-none">
-          {contenido.premium && (
+          {contenido.premium ? (
             <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
               <Crown size={9} className="text-white" />
+            </div>
+          ) : (
+            <div className="px-1.5 h-5 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 0 8px rgba(16,185,129,0.45)' }}>
+              <span className="text-[8px] font-black text-white tracking-wider">{t.badges.gratis}</span>
             </div>
           )}
           {saved && (
@@ -181,26 +182,6 @@ export function ContentCard({ contenido, delay = 0 }: { contenido: Contenido; de
             <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: `${c.from}cc`, backdropFilter: 'blur(8px)' }}>
               <Play size={16} fill="white" className="text-white ml-0.5" />
             </div>
-          </div>
-        )}
-
-        {/* Lock overlay for free users */}
-        {locked && (
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
-            style={{ background: 'rgba(0,0,0,0.52)', backdropFilter: 'blur(1px)' }}
-          >
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center mb-1"
-              style={{
-                background: 'linear-gradient(135deg,rgba(245,158,11,0.35),rgba(167,139,250,0.25))',
-                border: '1.5px solid rgba(245,158,11,0.6)',
-                boxShadow: '0 0 14px rgba(245,158,11,0.4)',
-              }}
-            >
-              <Lock size={14} style={{ color: '#f59e0b' }} />
-            </div>
-            <span className="text-[8px] font-black tracking-wider" style={{ color: '#f59e0b', textShadow: '0 0 8px rgba(245,158,11,0.6)' }}>{t.badges.premium}</span>
           </div>
         )}
       </div>

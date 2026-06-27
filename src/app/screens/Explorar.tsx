@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, SlidersHorizontal, Flame, MessageCircle, Heart, Eye } from 'lucide-react';
 import { IMGS } from '../data/mockData';
 import type { Contenido } from '../data/mockData';
-import { ContentRow } from '../components/ContentCard';
+import { ContentRow, ContentCard } from '../components/ContentCard';
 import { AuroraBackground } from '../components/AuroraBackground';
 import { HScrollRow } from '../components/HScrollRow';
 import { useAdminContent } from '../contexts/AdminContentContext';
@@ -155,7 +155,20 @@ export default function Explorar() {
                 <X size={11} /> {t.explorar.quitar_filtro}
               </button>
             </div>
-            <ContentRow titulo="" contenido={catFiltered} />
+            <div className="px-5">
+              <div className="grid gap-3 justify-center" style={{ gridTemplateColumns: 'repeat(2, 132px)' }}>
+                {catFiltered.map((item, idx) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.04, duration: 0.3 }}
+                  >
+                    <ContentCard contenido={item} />
+                  </motion.div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

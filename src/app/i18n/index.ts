@@ -482,6 +482,7 @@ export const T = {
       estreno:  'ESTRENO',
       nuevo:    'NUEVO',
       premium:  'PREMIUM',
+      gratis:   'GRATIS',
     },
   },
 
@@ -960,6 +961,7 @@ export const T = {
       estreno:  'PREMIERE',
       nuevo:    'NEW',
       premium:  'PREMIUM',
+      gratis:   'FREE',
     },
   },
 } as const;
