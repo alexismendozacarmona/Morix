@@ -80,7 +80,7 @@ export default function Login() {
               transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
             />
             <img
-              src="https://clasicosdelreggaeton.com/sitepad-data/uploads/2026/03/MorixLogoNuevoTranspa.png"
+              src="/morix-logo.png"
               alt="Morix"
               style={{
                 width: '100%',

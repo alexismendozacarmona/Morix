@@ -49,7 +49,7 @@ export default function Onboarding() {
           ))}
           {/* Video mascota con transparencia */}
           <img
-            src="https://clasicosdelreggaeton.com/sitepad-data/uploads/2026/03/MorixLogoNuevoTranspa.png"
+            src="/morix-logo.png"
             alt="Morix"
             style={{
               width: '100%',

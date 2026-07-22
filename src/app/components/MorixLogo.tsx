@@ -7,8 +7,9 @@
  *  - El shimmer usa CSS @keyframes (más eficiente que Web Animation API en Android)
  */
 
-const LOGO_URL =
-  'https://clasicosdelreggaeton.com/sitepad-data/uploads/2026/03/MorixLogoNuevoTranspa.png';
+// Logo bundleado localmente (public/morix-logo.png) — NO depende de hosting
+// externo, así nunca se cae aunque cambie/desaparezca el dominio original.
+const LOGO_URL = '/morix-logo.png';
 
 interface MorixLogoProps {
   /** Altura del logo en px (el ancho se ajusta automáticamente) */
